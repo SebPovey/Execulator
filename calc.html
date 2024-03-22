@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+#output {
+	font-family: monospace;
+	font-size: 14px;
+	font-style: normal;
+	font-variant: normal;
+	font-weight: 400;
+	line-height: 20px;
+}
+
+#input{
+width:400px;
+}
+.hex{
+color:#aa0000;
+}
+.dec{
+color:#00aa00;
+}
+.bin{
+color:#0000aa;
+}
+</style>
+</head>
+<body>
+Note: For log use logB(base,a). JS supports Bitwise &,|,^,~,<< and >>. For powers use Math.pow(base, power). 
+<br>
+<div id="variables">
+	<input type = "button" value = "Create New Variable " onclick="createNewVar();"/> 
+	</div>
+		<br>
+		<input type = "text" value = "(0.325*Math.pow(2,10))*logB(0.175,(Test/132.8))" id = "input" onkeydown = "if(event.keyCode == 13){Calc();}" />
+		<input type = "button" value = "Calc" onclick="Calc();"/>
+		<br>
+	<div id = "output">
+</div>
+
+
+<script>
+
+var variable_index = 0;
+var variables_to_eval = "";
+
+function createNewVar(){
+	const varDiv = document.getElementById('variables');
+	const var_name = 'document.getElementById(\'name_'+variable_index +'\').value';
+	const var_value = 'document.getElementById(\'value_'+variable_index +'\').value';
+	varDiv.innerHTML = '<br>\
+		<input type = "text" value = "Test" id = "name_'+variable_index+'" />\
+		<input type = "text" value = "5" id = "value_'+variable_index+'" />\
+		<input type = "button" value = "Store" onclick=\"storeVar('+var_name+','+var_value+');\"/>' + varDiv.innerHTML; 
+	variable_index +=1;
+}
+
+function storeVar(var_name, var_value)
+{
+	variables_to_eval += "var "+var_name+" = "+var_value+";";
+}
+
+function logB(base,val) {
+  return Math.log(val) / Math.log(base);
+}
+
+function dec2bin(dec) {
+  return (dec >>> 0).toString(2);
+}
+
+function isInt(n) {
+   return n % 1 === 0;
+}
+
+function Calc()
+{
+	const input = document.getElementById("input").value; 
+
+	const eval_str = variables_to_eval+input;
+
+	const output_decimal = (eval?.(eval_str))*1;
+
+	var str = "<br>Input: "+input+"<br> Result: <b class='dec';>"+output_decimal.toString()+"</b>";
+
+	if (isInt(output_decimal))
+	{
+		const output_hex = output_decimal.toString(16);
+		const output_binary = dec2bin(output_decimal)
+
+		var bin_str = output_binary.toString();
+		const rem = 4-(bin_str.length%4);
+
+		var pad_str = "";
+
+		for(var i=0;i<rem;i++){
+			pad_str += "0";
+		}
+
+		bin_str = pad_str + bin_str;
+
+		str += ", <b class='hex';>0x"+output_hex.toString()+"</b>"+
+		", <b class='bin';>0b"+bin_str+"</b>";
+	}
+	document.getElementById("output").innerHTML = str + document.getElementById("output").innerHTML;
+}
+</script>
+
+</body>
+</html>
