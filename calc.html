@@ -97,6 +97,7 @@ input[type="button"].btn {
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
 	<input type="text" class="input-control" value="(0.325*Math.pow(2,10))*logB(0.175,(Test/132.8))" id="input" onkeydown="if(event.keyCode == 13){Calc();}" />
 	<input type="button" class="btn" value="Calc" onclick="Calc();"/>
+	<input type="button" class="btn" id="copy-url-btn" value="Copy URL" onclick="copyCurrentURL();"/>
 </div>
 
 <div id="output"></div>
@@ -105,92 +106,67 @@ input[type="button"].btn {
 
 <script>
 var variable_index = 0;
-var variables_to_eval = "";
-var stored_vars = []; // array of {name,value}
 var isRestoring = false;
 
-function createNewVar(initialName, initialValue){
-	const varDiv = document.getElementById('variables');
-	const idx = variable_index;
-	const nameVal = initialName || 'Test';
-	const valueVal = (initialValue !== undefined) ? initialValue : '5';
-	
+function getDefaultVariableName(index) {
+	return String.fromCharCode(65 + (index % 26));
+}
+
+function createVariableRow(index, nameValue, valueValue) {
 	const row = document.createElement('div');
 	row.className = 'var-row';
-	row.id = 'varrow_'+idx;
-	
+	row.id = 'varrow_' + index;
+
 	const nameInput = document.createElement('input');
 	nameInput.type = 'text';
 	nameInput.className = 'input-control var-input';
-	nameInput.value = nameVal;
-	nameInput.id = 'name_'+idx;
-	
+	nameInput.value = nameValue;
+	nameInput.id = 'name_' + index;
+
 	const valueInput = document.createElement('input');
 	valueInput.type = 'text';
 	valueInput.className = 'input-control var-input';
-	valueInput.value = valueVal;
-	valueInput.id = 'value_'+idx;
-	
-	const storeBtn = document.createElement('input');
-	storeBtn.type = 'button';
-	storeBtn.className = 'btn';
-	storeBtn.value = 'Store';
-	storeBtn.onclick = (function(i){ return function() { storeVarByIndex(i); }; })(idx);
-	
+	valueInput.value = valueValue;
+	valueInput.id = 'value_' + index;
+
 	const removeBtn = document.createElement('input');
 	removeBtn.type = 'button';
 	removeBtn.className = 'btn';
 	removeBtn.value = 'Remove';
-	removeBtn.onclick = (function(i){ return function() { removeVar(i); }; })(idx);
-	
+	removeBtn.onclick = function() { removeVar(index); };
+
 	row.appendChild(nameInput);
 	row.appendChild(valueInput);
-	row.appendChild(storeBtn);
 	row.appendChild(removeBtn);
-	
-	varDiv.appendChild(row);
+	return row;
+}
+
+function createNewVar(initialName, initialValue){
+	const varDiv = document.getElementById('variables');
+	const idx = variable_index;
+	const nameVal = (initialName !== undefined && initialName !== null && String(initialName).trim() !== '') ? initialName : getDefaultVariableName(idx);
+	const valueVal = (initialValue !== undefined) ? initialValue : '0';
+
+	varDiv.appendChild(createVariableRow(idx, nameVal, valueVal));
 	variable_index += 1;
 }
 
-function storeVarByIndex(idx)
-{
-	const nameEl = document.getElementById('name_'+idx);
-	const valueEl = document.getElementById('value_'+idx);
-	if(!nameEl) return;
-	const name = String(nameEl.value).trim();
-	const value = valueEl ? String(valueEl.value) : '';
-	if(name === '') return;
-	// update existing entry only if same id exists (not by name to avoid collisions)
-	const existing = stored_vars.find(v => v.id === idx);
-	if(existing){
-		existing.name = name; existing.value = value;
-	}else{
-		stored_vars.push({id: idx, name: name, value: value});
-	}
-	rebuildVariablesToEval();
-	if (!isRestoring) syncURL();
-}
-
 function removeVar(idx){
-	const row = document.getElementById('varrow_'+idx);
+	const row = document.getElementById('varrow_' + idx);
 	if(row && row.parentNode) row.parentNode.removeChild(row);
-	// remove from stored_vars by id
-	stored_vars = stored_vars.filter(v => v.id !== idx);
-	rebuildVariablesToEval();
 	if(!isRestoring) syncURL();
-}
-
-function rebuildVariablesToEval(){
-	variables_to_eval = stored_vars.map(v => 'var '+v.name+' = '+v.value+';').join('');
 }
 
 function collectCurrentVars(){
 	const vars = [];
-	for(let i=0;i<variable_index;i++){
-		const nameEl = document.getElementById('name_'+i);
-		const valueEl = document.getElementById('value_'+i);
-		if(nameEl && nameEl.value != null && String(nameEl.value).trim() !== ''){
-			vars.push({ name: String(nameEl.value), value: valueEl ? String(valueEl.value) : '' });
+	for(let i = 0; i < variable_index; i++){
+		const nameEl = document.getElementById('name_' + i);
+		const valueEl = document.getElementById('value_' + i);
+		if(nameEl && String(nameEl.value).trim() !== ''){
+			vars.push({
+				name: String(nameEl.value),
+				value: valueEl ? String(valueEl.value) : ''
+			});
 		}
 	}
 	return vars;
@@ -199,11 +175,10 @@ function collectCurrentVars(){
 function syncURL(){
 	try{
 		const input = document.getElementById('input').value;
-		// serialize only name and value (omit id)
-		const vars = stored_vars.map(v => ({ name: v.name, value: v.value }));
+		const vars = collectCurrentVars();
 		const state = { input: input, vars: vars };
 		const hash = encodeURIComponent(JSON.stringify(state));
-		history.replaceState(null, '', '#'+hash);
+		history.replaceState(null, '', '#' + hash);
 	}catch(e){/* ignore */}
 }
 
@@ -215,15 +190,10 @@ function loadFromHash(){
 		if(state && typeof state === 'object'){
 			if(state.input) document.getElementById('input').value = state.input;
 			if(Array.isArray(state.vars)){
-				// reset stored vars before restoring
-				stored_vars = [];
-				state.vars.forEach(v => {
-					createNewVar(v.name, v.value);
-					const idx = variable_index - 1;
-					// store into internal list using the unified store function
-					storeVarByIndex(idx);
-				});
-				rebuildVariablesToEval();
+				const existingRows = document.querySelectorAll('.var-row');
+				existingRows.forEach(row => row.remove());
+				variable_index = 0;
+				state.vars.forEach(v => createNewVar(v.name, v.value));
 			}
 		}
 	}catch(e){ /* ignore malformed hash */ }
@@ -248,6 +218,25 @@ function escapeRegExp(str){
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function findUndefinedVariableNames(input, currentVars) {
+	const definedNames = new Set(currentVars.map(v => String(v.name).trim()).filter(Boolean));
+	const reservedNames = new Set([
+		'Math','logB','Calc','createNewVar','removeVar','collectCurrentVars','syncURL','loadFromHash',
+		'escapeHtml','escapeRegExp','dec2bin','isInt','findUndefinedVariableNames','copyCurrentURL',
+		'Number','String','Boolean','Array','Object','JSON','parseInt','parseFloat','isNaN','NaN',
+		'window','document','console','navigator'
+	]);
+	const matches = String(input).match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
+	const seen = new Set();
+
+	return matches.filter(name => {
+		if (reservedNames.has(name) || definedNames.has(name)) return false;
+		if (seen.has(name)) return false;
+		seen.add(name);
+		return true;
+	});
+}
+
 function dec2bin(dec) {
   return (dec >>> 0).toString(2);
 }
@@ -256,16 +245,60 @@ function isInt(n) {
    return n % 1 === 0;
 }
 
+function fallbackCopyText(text) {
+	const area = document.createElement('textarea');
+	area.value = text;
+	area.setAttribute('readonly', '');
+	area.style.position = 'fixed';
+	area.style.opacity = '0';
+	document.body.appendChild(area);
+	area.select();
+	try { document.execCommand('copy'); } catch (e) {}
+	document.body.removeChild(area);
+}
+
+function copyCurrentURL() {
+	syncURL();
+	const url = window.location.href;
+	const button = document.getElementById('copy-url-btn');
+	const originalText = button ? button.value : 'Copy URL';
+
+	if (navigator.clipboard && window.isSecureContext) {
+		navigator.clipboard.writeText(url).then(() => {
+			if (button) button.value = 'Copied!';
+			setTimeout(() => { if (button) button.value = originalText; }, 1200);
+		}).catch(() => {
+			fallbackCopyText(url);
+			if (button) button.value = 'URL Ready';
+			setTimeout(() => { if (button) button.value = originalText; }, 1200);
+		});
+		return;
+	}
+
+	fallbackCopyText(url);
+	if (button) button.value = 'URL Ready';
+	setTimeout(() => { if (button) button.value = originalText; }, 1200);
+}
+
 function Calc()
 {
 	const input = document.getElementById("input").value; 
 
 	// read current variable inputs (so Calc uses live values even if not 'Stored')
 	const current_vars = collectCurrentVars();
+	const undefinedVars = findUndefinedVariableNames(input, current_vars);
+	const warningHtml = undefinedVars.length
+		? "<div style='color:#b22222;margin:6px 0;'><b>Warning:</b> Undefined variable(s): " + undefinedVars.map(v => escapeHtml(v)).join(', ') + "</div>"
+		: "";
 
+	let output_decimal = NaN;
 	const eval_str = current_vars.map(v => 'var '+v.name+' = '+v.value+';').join('') + input;
 
-	const output_decimal = (eval?.(eval_str))*1;
+	try {
+		output_decimal = (eval?.(eval_str))*1;
+	} catch (e) {
+		output_decimal = NaN;
+	}
 
 	// create substituted input for display (replace variable names with values)
 	let substituted = input;
@@ -280,9 +313,9 @@ function Calc()
 
 	const safeInput = escapeHtml(substituted);
 
-	var str = "<br>Input: "+safeInput+"<br> Result: <b class='dec'>"+output_decimal.toString()+"</b>";
+	var str = "<br>Input: "+safeInput+warningHtml+"<br> Result: <b class='dec'>"+(Number.isFinite(output_decimal) ? output_decimal.toString() : 'Error')+"</b>";
 
-	if (isInt(output_decimal))
+	if (Number.isFinite(output_decimal) && isInt(output_decimal))
 	{
 		const output_hex = output_decimal.toString(16);
 		const output_binary = dec2bin(output_decimal)
